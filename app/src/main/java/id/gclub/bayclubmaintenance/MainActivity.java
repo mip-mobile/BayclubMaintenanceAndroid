@@ -70,7 +70,6 @@ public class MainActivity extends Activity {
             window.setDecorFitsSystemWindows(false);
         }
         applyImmersiveMode();
-        installSystemBarAutoHideListener();
 
         // Intercept predictive Back at gesture start on Android 14+ so transient
         // system bars can be hidden during the gesture instead of lingering onscreen.
@@ -186,6 +185,7 @@ public class MainActivity extends Activity {
 
         setContentView(webView);
         applyImmersiveMode();
+        installSystemBarAutoHideListener();
         if (savedInstanceState != null) {
             webView.restoreState(savedInstanceState);
             if (webView.getUrl() == null) webView.loadUrl(HOME_URL);
@@ -215,14 +215,10 @@ public class MainActivity extends Activity {
             WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                // Prefer the default interactive immersive behavior on Android 12+.
-                // This avoids explicitly requesting transient system-bar overlays for every swipe.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_DEFAULT);
-                } else {
-                    controller.setSystemBarsBehavior(
-                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-                }
+                // Keep bars immersive and transient when Android must reveal them.
+                // The visibility listeners immediately request fullscreen again after Back.
+                controller.setSystemBarsBehavior(
+                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
         }
     }
@@ -237,23 +233,40 @@ public class MainActivity extends Activity {
      * the window, without interfering with the system Back callback itself.
      */
     private void installSystemBarAutoHideListener() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
         View decor = getWindow().getDecorView();
-        decor.setOnApplyWindowInsetsListener((view, insets) -> {
-            boolean barsVisible = insets.isVisible(WindowInsets.Type.statusBars())
-                    || insets.isVisible(WindowInsets.Type.navigationBars());
-            if (barsVisible) {
-                // Re-hide as soon as Android reports the transient bar, then
-                // repeat shortly after the predictive-back animation settles.
-                view.post(this::hideSystemBarsNow);
-                view.postDelayed(this::hideSystemBarsNow, 24L);
-                view.postDelayed(this::hideSystemBarsNow, 70L);
-                view.postDelayed(this::hideSystemBarsNow, 160L);
-                view.postDelayed(this::hideSystemBarsNow, 320L);
+
+        // Legacy/system-UI visibility callback: some Android builds restore only
+        // the status bar during an edge-swipe Back gesture.
+        decor.setOnSystemUiVisibilityChangeListener(visibility -> {
+            boolean statusBarShown = (visibility & View.SYSTEM_UI_FLAG_FULLSCREEN) == 0;
+            boolean navigationBarShown = (visibility & View.SYSTEM_UI_FLAG_HIDE_NAVIGATION) == 0;
+            if (statusBarShown || navigationBarShown) {
+                decor.post(this::hideSystemBarsNow);
+                decor.postDelayed(this::hideSystemBarsNow, 24L);
+                decor.postDelayed(this::hideSystemBarsNow, 80L);
+                decor.postDelayed(this::hideSystemBarsNow, 180L);
+                decor.postDelayed(this::hideSystemBarsNow, 350L);
+                decor.postDelayed(this::hideSystemBarsNow, 700L);
             }
-            return insets;
         });
-        decor.requestApplyInsets();
+
+        // Modern Android reports transient bars through WindowInsets as well.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            decor.setOnApplyWindowInsetsListener((view, insets) -> {
+                boolean statusVisible = insets.isVisible(WindowInsets.Type.statusBars());
+                boolean navigationVisible = insets.isVisible(WindowInsets.Type.navigationBars());
+                if (statusVisible || navigationVisible) {
+                    view.post(this::hideSystemBarsNow);
+                    view.postDelayed(this::hideSystemBarsNow, 24L);
+                    view.postDelayed(this::hideSystemBarsNow, 80L);
+                    view.postDelayed(this::hideSystemBarsNow, 180L);
+                    view.postDelayed(this::hideSystemBarsNow, 350L);
+                    view.postDelayed(this::hideSystemBarsNow, 700L);
+                }
+                return insets;
+            });
+            decor.requestApplyInsets();
+        }
     }
 
     /**
@@ -262,7 +275,7 @@ public class MainActivity extends Activity {
      */
     private void scheduleImmersiveRestore() {
         View decor = getWindow().getDecorView();
-        long[] delays = new long[]{0L, 16L, 40L, 80L, 150L, 250L, 400L, 650L, 900L, 1300L, 1800L, 2400L};
+        long[] delays = new long[]{0L, 16L, 40L, 80L, 150L, 250L, 400L, 650L, 900L, 1300L, 1800L, 2400L, 3200L, 4200L, 5500L};
         for (long delay : delays) {
             decor.postDelayed(this::applyImmersiveMode, delay);
         }
