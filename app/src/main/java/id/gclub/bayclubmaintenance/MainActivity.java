@@ -293,7 +293,7 @@ public class MainActivity extends Activity {
                 "}catch(e){return 'no-spa';}})()";
 
         webView.evaluateJavascript(backScript, value -> {
-            String result = value == null ? "" : value.replace("\\"", "").trim();
+            String result = value == null ? "" : value.replace(String.valueOf((char) 34), "").trim();
 
             if ("modal".equals(result) || "subpage".equals(result)
                     || "page".equals(result) || "home".equals(result)) {
