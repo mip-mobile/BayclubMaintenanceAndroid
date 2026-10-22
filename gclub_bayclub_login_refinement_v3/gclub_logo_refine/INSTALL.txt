@@ -1,0 +1,15 @@
+GCLUB + BAYCLUB LOGIN LOGO REFINEMENT
+
+Changes:
+- Removed the “GClub Batam” label from the stock-center login card.
+- Removed location wording from the login connection status.
+- Reduced both logo image boxes to the same 72x72 px size (64x64 px on very narrow screens).
+- Kept both logos side-by-side and centered.
+- Bumped the Bayclub image URL cache key.
+
+Install by preserving paths under the existing htdocs folder:
+- maintenance/stock-center.php
+- maintenance/assets/brand/logo-bayclub-login.png
+
+Back up the existing stock-center.php first. The PNG is included so the path remains available. Do not overwrite config.php or import SQL.
+After uploading, open stock-center.php and hard refresh (Ctrl+Shift+R). On mobile, close the page/app fully and reopen it if needed.
