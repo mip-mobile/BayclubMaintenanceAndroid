@@ -24,11 +24,16 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # Avoid the retired SDK package named "tools"; it makes setup fail.
+          packages: platform-tools
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
 
       - name: Build installable debug APK
         shell: bash
@@ -87,7 +92,9 @@ jobs:
         run: |
           {
             echo '## Bayclub Maintenance APK build'
-            echo '- `Bayclub-Maintenance-debug.apk` is available for installation/testing.'
+            if [[ '${{ job.status }}' != 'success' ]]; then
+              echo '- Build failed. Open the failed step above for the exact error.'
+            fi
             if [[ '${{ steps.signing_check.outputs.available }}' == 'true' ]]; then
               echo '- `Bayclub-Maintenance.apk` is the release APK signed with the configured Bayclub keystore.'
             else
@@ -97,10 +104,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload installable APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: Bayclub-Maintenance-APK
           path: artifacts/*.apk
           if-no-files-found: error
           retention-days: 30
-
