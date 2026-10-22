@@ -1,0 +1,11 @@
+CHECKLIST SEBELUM BUILD APK BAYCLUB
+
+[ ] Buat repository GitHub khusus Bayclub Maintenance.
+[ ] Upload isi ZIP ini ke root repository, termasuk folder .github/workflows.
+[ ] Pastikan bayclub-release.jks dan BAYCLUB_KEYSTORE_ACCESS.txt tidak ada di repository.
+[ ] Tambahkan secrets BAYCLUB_KEYSTORE_BASE64, BAYCLUB_STORE_PASSWORD, BAYCLUB_KEY_ALIAS, BAYCLUB_KEY_PASSWORD.
+[ ] Buka Actions → Build Bayclub Maintenance APK → Run workflow.
+[ ] Download artifact Bayclub-Maintenance-APK.
+[ ] Instal dan uji login, navigasi, izin lokasi, serta upload foto di HP Android.
+
+Tanpa secrets, workflow tetap menghasilkan debug APK untuk pengujian. Untuk APK release agar mudah diperbarui tanpa uninstall, gunakan keystore yang sudah disiapkan.

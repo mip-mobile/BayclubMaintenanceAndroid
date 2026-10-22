@@ -1,0 +1,67 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingPropertiesFile = rootProject.file('signing/keystore.properties')
+def signingProperties = new java.util.Properties()
+if (signingPropertiesFile.exists()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
+}
+
+// Prefer CI environment variables; local builds may use the ignored properties file.
+def envSigning = [
+    storeFile: System.getenv('BAYCLUB_KEYSTORE_PATH'),
+    storePassword: System.getenv('BAYCLUB_STORE_PASSWORD'),
+    keyAlias: System.getenv('BAYCLUB_KEY_ALIAS'),
+    keyPassword: System.getenv('BAYCLUB_KEY_PASSWORD')
+]
+def signingValue = { String key ->
+    def envValue = envSigning[key]
+    return (envValue != null && !envValue.isEmpty()) ? envValue : signingProperties.getProperty(key)
+}
+
+android {
+    namespace 'id.gclub.bayclubmaintenance'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'id.gclub.bayclubmaintenance'
+        minSdk 23
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    signingConfigs {
+        release {
+            def configuredStore = signingValue('storeFile')
+            def configuredStorePassword = signingValue('storePassword')
+            def configuredAlias = signingValue('keyAlias')
+            def configuredKeyPassword = signingValue('keyPassword')
+            if (configuredStore && configuredStorePassword && configuredAlias && configuredKeyPassword) {
+                storeFile rootProject.file(configuredStore).absoluteFile
+                storePassword configuredStorePassword
+                keyAlias configuredAlias
+                keyPassword configuredKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-debug'
+            resValue 'string', 'app_name', 'Bayclub Maintenance (Testing)'
+        }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            shrinkResources false
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
