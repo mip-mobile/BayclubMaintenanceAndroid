@@ -276,13 +276,54 @@ public class MainActivity extends Activity {
      * must press/gesture Back twice within two seconds to exit the app.
      */
     private void handleBackPress() {
-        if (webView != null && webView.canGoBack()) {
-            lastBackPressAt = 0L;
-            webView.goBack();
-            applyImmersiveMode();
+        if (webView == null) {
+            requestExitOnDoubleBack();
             return;
         }
 
+        // Bayclub is a single-page web app: opening a checklist task is a
+        // JavaScript dialog/view, not a new WebView URL. Ask the website to
+        // unwind its own navigation stack before considering app exit.
+        final String backScript =
+                "(function(){try{" +
+                "if(typeof window.navigateBack==='function')return window.navigateBack();" +
+                "var d=document.getElementById('modal');" +
+                "if(d&&d.open&&typeof window.closeModal==='function')return window.closeModal()?'modal':'stay';" +
+                "return 'no-spa';" +
+                "}catch(e){return 'no-spa';}})()";
+
+        webView.evaluateJavascript(backScript, value -> {
+            String result = value == null ? "" : value.replace("\\"", "").trim();
+
+            if ("modal".equals(result) || "subpage".equals(result)
+                    || "page".equals(result) || "home".equals(result)) {
+                lastBackPressAt = 0L;
+                applyImmersiveMode();
+                return;
+            }
+
+            if ("busy".equals(result) || "stay".equals(result)) {
+                applyImmersiveMode();
+                return;
+            }
+
+            if ("no-spa".equals(result)) {
+                // Fallback for an unexpected page without Bayclub's SPA handler.
+                if (webView != null && webView.canGoBack()) {
+                    lastBackPressAt = 0L;
+                    webView.goBack();
+                    applyImmersiveMode();
+                    return;
+                }
+            }
+
+            // 'exit' means Bayclub's own page stack is already at its home page.
+            // Never exit on the first Back press.
+            requestExitOnDoubleBack();
+        });
+    }
+
+    private void requestExitOnDoubleBack() {
         long now = System.currentTimeMillis();
         if (lastBackPressAt > 0L && now - lastBackPressAt <= 2000L) {
             lastBackPressAt = 0L;
