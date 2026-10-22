@@ -1,1 +1,106 @@
+name: Build Bayclub Maintenance APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build installable Android APKs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build installable debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon clean assembleDebug
+          mkdir -p artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk artifacts/Bayclub-Maintenance-debug.apk
+          "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --verbose artifacts/Bayclub-Maintenance-debug.apk
+
+      - name: Check release signing secrets
+        id: signing_check
+        env:
+          BAYCLUB_KEYSTORE_BASE64: ${{ secrets.BAYCLUB_KEYSTORE_BASE64 }}
+          BAYCLUB_STORE_PASSWORD: ${{ secrets.BAYCLUB_STORE_PASSWORD }}
+          BAYCLUB_KEY_ALIAS: ${{ secrets.BAYCLUB_KEY_ALIAS }}
+          BAYCLUB_KEY_PASSWORD: ${{ secrets.BAYCLUB_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          if [[ -n "${BAYCLUB_KEYSTORE_BASE64:-}" && -n "${BAYCLUB_STORE_PASSWORD:-}" && -n "${BAYCLUB_KEY_ALIAS:-}" && -n "${BAYCLUB_KEY_PASSWORD:-}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets are not all configured; the installable debug APK will still be provided."
+          fi
+
+      - name: Restore private release keystore
+        if: steps.signing_check.outputs.available == 'true'
+        env:
+          BAYCLUB_KEYSTORE_BASE64: ${{ secrets.BAYCLUB_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$BAYCLUB_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/bayclub-release.jks"
+          test -s "$RUNNER_TEMP/bayclub-release.jks"
+          chmod 600 "$RUNNER_TEMP/bayclub-release.jks"
+
+      - name: Build signed release APK
+        if: steps.signing_check.outputs.available == 'true'
+        env:
+          BAYCLUB_KEYSTORE_PATH: ${{ runner.temp }}/bayclub-release.jks
+          BAYCLUB_STORE_PASSWORD: ${{ secrets.BAYCLUB_STORE_PASSWORD }}
+          BAYCLUB_KEY_ALIAS: ${{ secrets.BAYCLUB_KEY_ALIAS }}
+          BAYCLUB_KEY_PASSWORD: ${{ secrets.BAYCLUB_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk artifacts/Bayclub-Maintenance.apk
+          "${ANDROID_HOME}/build-tools/35.0.0/apksigner" verify --verbose artifacts/Bayclub-Maintenance.apk
+
+      - name: Publish build summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## Bayclub Maintenance APK build'
+            echo '- `Bayclub-Maintenance-debug.apk` is available for installation/testing.'
+            if [[ '${{ steps.signing_check.outputs.available }}' == 'true' ]]; then
+              echo '- `Bayclub-Maintenance.apk` is the release APK signed with the configured Bayclub keystore.'
+            else
+              echo '- Release APK skipped because signing secrets are not all configured.'
+              echo '- Configure the four `BAYCLUB_*` repository secrets and rerun to produce a signed release APK.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bayclub-Maintenance-APK
+          path: artifacts/*.apk
+          if-no-files-found: error
+          retention-days: 30
 
