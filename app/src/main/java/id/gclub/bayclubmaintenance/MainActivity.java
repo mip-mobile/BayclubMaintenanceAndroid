@@ -23,6 +23,8 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.Toast;
+import android.window.BackEvent;
+import android.window.OnBackAnimationCallback;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
@@ -44,7 +46,14 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         Window window = getWindow();
         window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.BLACK);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.setStatusBarContrastEnforced(false);
+            window.setNavigationBarContrastEnforced(false);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            window.setNavigationBarDividerColor(Color.TRANSPARENT);
+        }
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
@@ -62,8 +71,34 @@ public class MainActivity extends Activity {
         }
         applyImmersiveMode();
 
-        // Register modern system Back (including edge-swipe gestures) on Android 13+.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        // Intercept predictive Back at gesture start on Android 14+ so transient
+        // system bars can be hidden during the gesture instead of lingering onscreen.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            backInvokedCallback = new OnBackAnimationCallback() {
+                @Override
+                public void onBackStarted(BackEvent backEvent) {
+                    applyImmersiveMode();
+                }
+
+                @Override
+                public void onBackProgressed(BackEvent backEvent) {
+                    hideSystemBarsNow();
+                }
+
+                @Override
+                public void onBackCancelled() {
+                    scheduleImmersiveRestore();
+                }
+
+                @Override
+                public void onBackInvoked() {
+                    handleBackPress();
+                    scheduleImmersiveRestore();
+                }
+            };
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, backInvokedCallback);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             backInvokedCallback = this::handleBackPress;
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
                     OnBackInvokedDispatcher.PRIORITY_DEFAULT, backInvokedCallback);
@@ -163,25 +198,42 @@ public class MainActivity extends Activity {
      * navigation bar. With IMMERSIVE_STICKY, a swipe can reveal system UI
      * temporarily and Android hides it again.
      */
-    private void applyImmersiveMode() {
-        final int flags = View.SYSTEM_UI_FLAG_FULLSCREEN
+    private int immersiveFlags() {
+        return View.SYSTEM_UI_FLAG_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                 | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+    }
 
-        View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(flags);
-
-        // Use the modern Android system-bar controller when available.
+    private void hideSystemBarsNow() {
+        Window window = getWindow();
+        window.getDecorView().setSystemUiVisibility(immersiveFlags());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowInsetsController controller = getWindow().getInsetsController();
+            WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
                 controller.setSystemBarsBehavior(
                         WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             }
+        }
+    }
+
+    private void applyImmersiveMode() {
+        hideSystemBarsNow();
+    }
+
+    /**
+     * Android may momentarily reveal the status bar and gesture navigation
+     * indicator while processing an edge-swipe Back gesture. Re-hide system bars
+     * during and immediately after that gesture, while retaining system Back.
+     */
+    private void scheduleImmersiveRestore() {
+        View decor = getWindow().getDecorView();
+        long[] delays = new long[]{0L, 45L, 140L, 300L, 550L};
+        for (long delay : delays) {
+            decor.postDelayed(this::applyImmersiveMode, delay);
         }
     }
 
@@ -276,6 +328,8 @@ public class MainActivity extends Activity {
      * must press/gesture Back twice within two seconds to exit the app.
      */
     private void handleBackPress() {
+        hideSystemBarsNow();
+        scheduleImmersiveRestore();
         if (webView == null) {
             requestExitOnDoubleBack();
             return;
