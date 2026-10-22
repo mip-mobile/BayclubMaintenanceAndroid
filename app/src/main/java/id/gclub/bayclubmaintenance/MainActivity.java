@@ -215,8 +215,14 @@ public class MainActivity extends Activity {
             WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                controller.setSystemBarsBehavior(
-                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                // Prefer the default interactive immersive behavior on Android 12+.
+                // This avoids explicitly requesting transient system-bar overlays for every swipe.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_DEFAULT);
+                } else {
+                    controller.setSystemBarsBehavior(
+                            WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                }
             }
         }
     }
@@ -237,8 +243,13 @@ public class MainActivity extends Activity {
             boolean barsVisible = insets.isVisible(WindowInsets.Type.statusBars())
                     || insets.isVisible(WindowInsets.Type.navigationBars());
             if (barsVisible) {
-                view.postDelayed(this::hideSystemBarsNow, 80L);
-                view.postDelayed(this::hideSystemBarsNow, 220L);
+                // Re-hide as soon as Android reports the transient bar, then
+                // repeat shortly after the predictive-back animation settles.
+                view.post(this::hideSystemBarsNow);
+                view.postDelayed(this::hideSystemBarsNow, 24L);
+                view.postDelayed(this::hideSystemBarsNow, 70L);
+                view.postDelayed(this::hideSystemBarsNow, 160L);
+                view.postDelayed(this::hideSystemBarsNow, 320L);
             }
             return insets;
         });
@@ -251,7 +262,7 @@ public class MainActivity extends Activity {
      */
     private void scheduleImmersiveRestore() {
         View decor = getWindow().getDecorView();
-        long[] delays = new long[]{0L, 45L, 140L, 300L, 550L};
+        long[] delays = new long[]{0L, 16L, 40L, 80L, 150L, 250L, 400L, 650L, 900L, 1300L, 1800L, 2400L};
         for (long delay : delays) {
             decor.postDelayed(this::applyImmersiveMode, delay);
         }
