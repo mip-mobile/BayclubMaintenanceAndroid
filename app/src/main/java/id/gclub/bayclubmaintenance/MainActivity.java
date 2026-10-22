@@ -70,6 +70,7 @@ public class MainActivity extends Activity {
             window.setDecorFitsSystemWindows(false);
         }
         applyImmersiveMode();
+        installSystemBarAutoHideListener();
 
         // Intercept predictive Back at gesture start on Android 14+ so transient
         // system bars can be hidden during the gesture instead of lingering onscreen.
@@ -225,9 +226,28 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Android may momentarily reveal the status bar and gesture navigation
-     * indicator while processing an edge-swipe Back gesture. Re-hide system bars
-     * during and immediately after that gesture, while retaining system Back.
+     * Android can dispatch fresh insets when transient bars are revealed by an
+     * edge-swipe gesture. Re-hide them as soon as that visibility change reaches
+     * the window, without interfering with the system Back callback itself.
+     */
+    private void installSystemBarAutoHideListener() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
+        View decor = getWindow().getDecorView();
+        decor.setOnApplyWindowInsetsListener((view, insets) -> {
+            boolean barsVisible = insets.isVisible(WindowInsets.Type.statusBars())
+                    || insets.isVisible(WindowInsets.Type.navigationBars());
+            if (barsVisible) {
+                view.postDelayed(this::hideSystemBarsNow, 80L);
+                view.postDelayed(this::hideSystemBarsNow, 220L);
+            }
+            return insets;
+        });
+        decor.requestApplyInsets();
+    }
+
+    /**
+     * Android can reveal transient status/navigation bars during an edge-swipe.
+     * Reapply immersive mode for a brief period after Back is processed.
      */
     private void scheduleImmersiveRestore() {
         View decor = getWindow().getDecorView();
