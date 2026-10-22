@@ -23,6 +23,8 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.Toast;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 public class MainActivity extends Activity {
     private static final String HOME_URL = "https://bayclub.infinityfree.io/maintenance/";
@@ -34,6 +36,8 @@ public class MainActivity extends Activity {
     private ValueCallback<Uri[]> fileChooserCallback;
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
+    private long lastBackPressAt = 0L;
+    private OnBackInvokedCallback backInvokedCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,6 +61,13 @@ public class MainActivity extends Activity {
             window.setDecorFitsSystemWindows(false);
         }
         applyImmersiveMode();
+
+        // Register modern system Back (including edge-swipe gestures) on Android 13+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            backInvokedCallback = this::handleBackPress;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, backInvokedCallback);
+        }
 
         webView = new WebView(this);
         webView.setBackgroundColor(Color.rgb(242, 245, 249));
@@ -260,14 +271,43 @@ public class MainActivity extends Activity {
         super.onSaveInstanceState(outState);
     }
 
+    /**
+     * Back navigates through WebView history first. At the home page, the user
+     * must press/gesture Back twice within two seconds to exit the app.
+     */
+    private void handleBackPress() {
+        if (webView != null && webView.canGoBack()) {
+            lastBackPressAt = 0L;
+            webView.goBack();
+            applyImmersiveMode();
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        if (lastBackPressAt > 0L && now - lastBackPressAt <= 2000L) {
+            lastBackPressAt = 0L;
+            finish();
+            return;
+        }
+
+        lastBackPressAt = now;
+        Toast.makeText(this,
+                "Tekan sekali lagi untuk keluar dari Bayclub Mobile.",
+                Toast.LENGTH_SHORT).show();
+        applyImmersiveMode();
+    }
+
     @Override
     public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
+        handleBackPress();
     }
 
     @Override
     protected void onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backInvokedCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backInvokedCallback);
+            backInvokedCallback = null;
+        }
         if (fileChooserCallback != null) {
             fileChooserCallback.onReceiveValue(null);
             fileChooserCallback = null;
