@@ -1,4 +1,4 @@
-# Bayclub Maintenance — Android APK Build
+# Bayclub Mobile — Android APK Build
 
 Project Android WebView untuk membuka `https://bayclub.infinityfree.io/maintenance/`. Source ini tidak menyimpan password login website. APK memerlukan internet karena aplikasi memuat sistem Maintenance Bayclub dari hosting.
 
@@ -6,7 +6,7 @@ Project Android WebView untuk membuka `https://bayclub.infinityfree.io/maintenan
 
 Workflow `.github/workflows/build-signed-apk.yml` berjalan saat ada push ke repository atau dijalankan manual dari tab **Actions**. Workflow selalu menghasilkan `Bayclub-Maintenance-debug.apk` yang sudah ditandatangani dengan debug key CI agar bisa diuji. Jika empat GitHub Actions secrets signing tersedia, workflow juga menghasilkan `Bayclub-Maintenance.apk`, yakni APK release yang ditandatangani dengan keystore Bayclub milikmu.
 
-Debug APK memakai application ID `id.gclub.bayclubmaintenance.debug` dan label `Bayclub Maintenance (Testing)`. Release APK memakai application ID `id.gclub.bayclubmaintenance` dan label `Bayclub Maintenance`.
+Debug APK memakai application ID `id.gclub.bayclubmaintenance.debug` dan label `Bayclub Mobile (Testing)`. Release APK memakai application ID `id.gclub.bayclubmaintenance` dan label `Bayclub Mobile`.
 
 ## Upload project ke GitHub
 
@@ -52,9 +52,9 @@ Semua update release mendatang harus memakai keystore yang sama. Simpan file `.j
 
 ## Aplikasi
 
-- Nama: Bayclub Maintenance
+- Nama: Bayclub Mobile
 - URL awal: `https://bayclub.infinityfree.io/maintenance/`
 - Package ID release: `id.gclub.bayclubmaintenance`
-- Versi: `1.0.0` / versionCode `1`
+- Versi: `1.1.0` / versionCode `2`
 - Ikon: logo Bayclub yang diberikan pengguna
-- Fitur WebView: JavaScript, DOM storage, cookies, file chooser untuk upload bukti, izin lokasi saat situs meminta, navigasi Back.
+- Fitur WebView: JavaScript, DOM storage, cookies, file chooser untuk upload bukti, izin lokasi saat situs meminta, navigasi Back, fullscreen immersive yang menyembunyikan status/notifikasi dan navigation bar.
