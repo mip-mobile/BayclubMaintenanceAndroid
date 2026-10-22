@@ -55,6 +55,6 @@ Semua update release mendatang harus memakai keystore yang sama. Simpan file `.j
 - Nama: Bayclub Mobile
 - URL awal: `https://bayclub.infinityfree.io/maintenance/`
 - Package ID release: `id.gclub.bayclubmaintenance`
-- Versi: `1.1.0` / versionCode `2`
+- Versi: `1.1.2` / versionCode `4`
 - Ikon: logo Bayclub yang diberikan pengguna
-- Fitur WebView: JavaScript, DOM storage, cookies, file chooser untuk upload bukti, izin lokasi saat situs meminta, navigasi Back, fullscreen immersive yang menyembunyikan status/notifikasi dan navigation bar.
+- Fitur WebView: JavaScript, DOM storage, cookies, file chooser untuk upload bukti, izin lokasi saat situs meminta, navigasi Back, fullscreen immersive yang menyembunyikan status/notifikasi dan navigation bar, tombol/gestur Back untuk navigasi halaman sebelumnya, serta tekan Back dua kali di halaman awal untuk keluar.
