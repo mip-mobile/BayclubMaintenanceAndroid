@@ -210,15 +210,22 @@ public class MainActivity extends Activity {
 
     private void hideSystemBarsNow() {
         Window window = getWindow();
-        window.getDecorView().setSystemUiVisibility(immersiveFlags());
+        // Re-assert fullscreen flags because some Android builds clear them after
+        // dispatching an edge-swipe Back gesture.
+        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.setDecorFitsSystemWindows(false);
+        }
+        View decor = window.getDecorView();
+        decor.setSystemUiVisibility(immersiveFlags());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowInsetsController controller = window.getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                // Keep bars immersive and transient when Android must reveal them.
-                // The visibility listeners immediately request fullscreen again after Back.
-                controller.setSystemBarsBehavior(
-                        WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_DEFAULT);
             }
         }
     }
