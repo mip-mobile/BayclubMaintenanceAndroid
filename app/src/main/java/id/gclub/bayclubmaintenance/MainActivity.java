@@ -637,7 +637,7 @@ public class MainActivity extends Activity {
         content.setPadding(24, 18, 24, 8);
 
         TextView description = new TextView(this);
-        description.setText("Periksa foto dan timestamp sebelum dikirim ke checklist.");
+        description.setText("Periksa foto sebelum dikirim ke checklist.");
         description.setTextSize(14);
         description.setTextColor(Color.rgb(70, 80, 95));
         content.addView(description);
@@ -699,9 +699,9 @@ public class MainActivity extends Activity {
             if (resultCode == RESULT_OK && pendingCameraFile != null
                     && pendingCameraFile.exists() && pendingCameraFile.length() > 0) {
                 try {
-                    pendingWatermarkedFile = createWatermarkedPhoto(pendingCameraFile);
-                    if (pendingCameraFile != null) pendingCameraFile.delete();
-                    showPhotoPreview(pendingWatermarkedFile);
+                    // Keep the native camera image untouched. The authenticated website
+                    // applies the only watermark after upload using the logged-in account.
+                    showPhotoPreview(pendingCameraFile);
                 } catch (Exception e) {
                     if (fileChooserCallback != null) {
                         fileChooserCallback.onReceiveValue(null);
