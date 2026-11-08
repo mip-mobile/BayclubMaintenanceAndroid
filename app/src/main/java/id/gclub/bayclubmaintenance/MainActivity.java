@@ -2,6 +2,7 @@ package id.gclub.bayclubmaintenance;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -17,12 +18,29 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.graphics.Color;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.Typeface;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.Toast;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import androidx.core.content.FileProvider;
+import androidx.exifinterface.media.ExifInterface;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+import java.util.TimeZone;
 import android.window.BackEvent;
 import android.window.OnBackAnimationCallback;
 import android.window.OnBackInvokedCallback;
@@ -33,9 +51,15 @@ public class MainActivity extends Activity {
     private static final String TRUSTED_HOST = "bayclub.infinityfree.io";
     private static final int FILE_CHOOSER_REQUEST = 4101;
     private static final int LOCATION_REQUEST = 4102;
+    private static final int CAMERA_REQUEST = 4103;
+    private static final int MAX_CAMERA_IMAGE_DIMENSION = 2200;
 
     private WebView webView;
     private ValueCallback<Uri[]> fileChooserCallback;
+    private File pendingCameraFile;
+    private File pendingWatermarkedFile;
+    private String pendingPetugasName = "Petugas Bayclub";
+    private String pendingJobName = "Checklist Maintenance";
     private GeolocationPermissions.Callback pendingGeoCallback;
     private String pendingGeoOrigin;
     private long lastBackPressAt = 0L;
@@ -141,6 +165,13 @@ public class MainActivity extends Activity {
                     FileChooserParams fileChooserParams) {
                 if (fileChooserCallback != null) fileChooserCallback.onReceiveValue(null);
                 fileChooserCallback = callback;
+
+                // Checklist photo evidence opens Android's native rear-camera app.
+                if (isImageChooser(fileChooserParams)) {
+                    getPetugasNameAndOpenCamera();
+                    return true;
+                }
+
                 Intent intent;
                 try {
                     intent = fileChooserParams.createIntent();
@@ -331,9 +362,298 @@ public class MainActivity extends Activity {
         return true;
     }
 
+
+    private boolean isImageChooser(WebChromeClient.FileChooserParams params) {
+        String[] types = params == null ? null : params.getAcceptTypes();
+        if (types == null || types.length == 0) return true;
+        boolean hasImageType = false;
+        for (String type : types) {
+            if (type == null || type.trim().isEmpty()) continue;
+            String normalized = type.trim().toLowerCase(Locale.ROOT);
+            if ("*/*".equals(normalized)) return false;
+            if (normalized.startsWith("image/")) {
+                hasImageType = true;
+            } else {
+                return false;
+            }
+        }
+        return hasImageType;
+    }
+
+    private void getPetugasNameAndOpenCamera() {
+        if (webView == null) {
+            launchNativeCamera();
+            return;
+        }
+
+        // Read the staff label and current task heading from the Bayclub page.
+        // Expected staff labels include "Satria · Split" and "Split Satria".
+        final String script =
+                "(function(){try{var t=(document.body&&document.body.innerText)||'';" +
+                "var m=t.match(/(?:Split|Shift\\s*\\d+)\\s+([A-Z][A-Za-z.'-]*(?:\\s+[A-Z][A-Za-z.'-]*)*)/m);" +
+                "if(!m)m=t.match(/([A-Z][A-Za-z.'-]*(?:\\s+[A-Z][A-Za-z.'-]*)*)\\s*[·•]\\s*(?:Split|Shift\\s*\\d+)/m);" +
+                "var h=document.querySelector('h1,h2');" +
+                "var job=h?(h.innerText||'').trim():'Checklist Maintenance';" +
+                "return JSON.stringify({petugas:m?m[1]:'Petugas Bayclub',pekerjaan:job||'Checklist Maintenance'});" +
+                "}catch(e){return JSON.stringify({petugas:'Petugas Bayclub',pekerjaan:'Checklist Maintenance'});}})()";
+
+        webView.evaluateJavascript(script, value -> {
+            try {
+                Object outer = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
+                String payload = outer instanceof String ? (String) outer : "{}";
+                org.json.JSONObject data = new org.json.JSONObject(payload);
+                pendingPetugasName = data.optString("petugas", "Petugas Bayclub").trim();
+                pendingJobName = data.optString("pekerjaan", "Checklist Maintenance").trim();
+            } catch (Exception ignored) {
+                pendingPetugasName = "Petugas Bayclub";
+                pendingJobName = "Checklist Maintenance";
+            }
+            if (pendingPetugasName.isEmpty()) pendingPetugasName = "Petugas Bayclub";
+            if (pendingJobName.isEmpty()) pendingJobName = "Checklist Maintenance";
+            launchNativeCamera();
+        });
+    }
+
+    private void launchNativeCamera() {
+        try {
+            File pictures = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES);
+            if (pictures == null) pictures = getCacheDir();
+            if (!pictures.exists() && !pictures.mkdirs()) {
+                throw new java.io.IOException("Folder foto tidak dapat dibuat");
+            }
+
+            pendingCameraFile = File.createTempFile("bayclub-camera-", ".jpg", pictures);
+            Uri outputUri = FileProvider.getUriForFile(
+                    this, getPackageName() + ".fileprovider", pendingCameraFile);
+
+            Intent cameraIntent = new Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE);
+            cameraIntent.putExtra(android.provider.MediaStore.EXTRA_OUTPUT, outputUri);
+            cameraIntent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            cameraIntent.setClipData(android.content.ClipData.newUri(
+                    getContentResolver(), "Bayclub camera output", outputUri));
+
+            // Do not pre-check resolveActivity(): Android package-visibility filters can
+            // return null even when a camera handler is installed. Let Android resolve it.
+            startActivityForResult(cameraIntent, CAMERA_REQUEST);
+        } catch (Exception e) {
+            if (fileChooserCallback != null) {
+                fileChooserCallback.onReceiveValue(null);
+                fileChooserCallback = null;
+            }
+            Toast.makeText(this, "Tidak dapat membuka kamera: " + e.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private Bitmap decodeCameraBitmap(File file) throws Exception {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(file.getAbsolutePath(), bounds);
+
+        int sample = 1;
+        while (bounds.outWidth / sample > MAX_CAMERA_IMAGE_DIMENSION
+                || bounds.outHeight / sample > MAX_CAMERA_IMAGE_DIMENSION) {
+            sample *= 2;
+        }
+
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = sample;
+        Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath(), options);
+        if (bitmap == null) throw new java.io.IOException("Hasil kamera tidak dapat dibaca");
+
+        ExifInterface exif = new ExifInterface(file.getAbsolutePath());
+        int orientation = exif.getAttributeInt(
+                ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+
+        Matrix matrix = new Matrix();
+        switch (orientation) {
+            case ExifInterface.ORIENTATION_ROTATE_90: matrix.postRotate(90); break;
+            case ExifInterface.ORIENTATION_ROTATE_180: matrix.postRotate(180); break;
+            case ExifInterface.ORIENTATION_ROTATE_270: matrix.postRotate(270); break;
+            case ExifInterface.ORIENTATION_FLIP_HORIZONTAL: matrix.preScale(-1, 1); break;
+            case ExifInterface.ORIENTATION_FLIP_VERTICAL: matrix.preScale(1, -1); break;
+            default: break;
+        }
+        if (!matrix.isIdentity()) {
+            Bitmap rotated = Bitmap.createBitmap(
+                    bitmap, 0, 0, bitmap.getWidth(), bitmap.getHeight(), matrix, true);
+            if (rotated != bitmap) bitmap.recycle();
+            bitmap = rotated;
+        }
+        return bitmap;
+    }
+
+    private void drawWatermarkLine(Canvas canvas, String value, float x, float baseline,
+            float maxWidth, Paint paint) {
+        float originalSize = paint.getTextSize();
+        while (paint.measureText(value) > maxWidth && paint.getTextSize() > 16f) {
+            paint.setTextSize(paint.getTextSize() * 0.94f);
+        }
+        canvas.drawText(value, x, baseline, paint);
+        paint.setTextSize(originalSize);
+    }
+
+    private File createWatermarkedPhoto(File source) throws Exception {
+        Bitmap bitmap = decodeCameraBitmap(source);
+        try {
+            Canvas canvas = new Canvas(bitmap);
+            int width = bitmap.getWidth();
+            int height = bitmap.getHeight();
+            float left = Math.max(24f, width * 0.035f);
+            float bandHeight = Math.max(190f, height * 0.24f);
+
+            Paint background = new Paint(Paint.ANTI_ALIAS_FLAG);
+            background.setColor(Color.argb(184, 5, 20, 42));
+            canvas.drawRect(0, height - bandHeight, width, height, background);
+
+            SimpleDateFormat dateFormat =
+                    new SimpleDateFormat("dd MMMM yyyy", new Locale("id", "ID"));
+            SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+            TimeZone wib = TimeZone.getTimeZone("Asia/Jakarta");
+            dateFormat.setTimeZone(wib);
+            timeFormat.setTimeZone(wib);
+            Date capturedAt = new Date();
+            String date = dateFormat.format(capturedAt);
+            String time = timeFormat.format(capturedAt) + " WIB";
+
+            Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+            text.setColor(Color.WHITE);
+            text.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+            float titleSize = Math.max(22f, width * 0.026f);
+            float detailSize = Math.max(18f, width * 0.021f);
+            float availableWidth = width - (left * 2f);
+
+            text.setTextSize(titleSize);
+            float y = height - bandHeight + titleSize + 14f;
+            drawWatermarkLine(canvas, "BAYCLUB MAINTENANCE", left, y, availableWidth, text);
+
+            text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            text.setTextSize(detailSize);
+            float lineGap = detailSize + 10f;
+            y += lineGap;
+            drawWatermarkLine(canvas, "Lokasi: Bayclub", left, y, availableWidth, text);
+            y += lineGap;
+            drawWatermarkLine(canvas, "Petugas: " + pendingPetugasName, left, y, availableWidth, text);
+            y += lineGap;
+            drawWatermarkLine(canvas, "Pekerjaan: " + pendingJobName, left, y, availableWidth, text);
+            y += lineGap;
+            drawWatermarkLine(canvas, "Tanggal: " + date + "  •  " + time, left, y, availableWidth, text);
+
+            File parent = source.getParentFile();
+            File output = File.createTempFile("bayclub-bukti-", ".jpg", parent);
+            try (FileOutputStream stream = new FileOutputStream(output)) {
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 92, stream)) {
+                    throw new java.io.IOException("Foto gagal disimpan sebagai JPEG");
+                }
+                stream.flush();
+            }
+            return output;
+        } finally {
+            bitmap.recycle();
+        }
+    }
+
+    private void showPhotoPreview(File photoFile) {
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inSampleSize = 1;
+        Bitmap previewBitmap = BitmapFactory.decodeFile(photoFile.getAbsolutePath(), options);
+        if (previewBitmap == null) {
+            if (fileChooserCallback != null) {
+                fileChooserCallback.onReceiveValue(null);
+                fileChooserCallback = null;
+            }
+            Toast.makeText(this, "Preview foto tidak dapat dibuka.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(24, 18, 24, 8);
+
+        TextView description = new TextView(this);
+        description.setText("Periksa foto dan timestamp sebelum dikirim ke checklist.");
+        description.setTextSize(14);
+        description.setTextColor(Color.rgb(70, 80, 95));
+        content.addView(description);
+
+        ImageView image = new ImageView(this);
+        image.setImageBitmap(previewBitmap);
+        image.setAdjustViewBounds(true);
+        image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        LinearLayout.LayoutParams imageParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+        imageParams.topMargin = 12;
+        content.addView(image, imageParams);
+
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Preview Foto Bukti")
+                .setView(content)
+                .setNegativeButton("Ambil Ulang", null)
+                .setPositiveButton("Gunakan Foto", (d, which) -> {
+                    if (fileChooserCallback != null) {
+                        Uri finalUri = FileProvider.getUriForFile(
+                                MainActivity.this, getPackageName() + ".fileprovider", photoFile);
+                        fileChooserCallback.onReceiveValue(new Uri[]{finalUri});
+                        fileChooserCallback = null;
+                    }
+                })
+                .setOnCancelListener(d -> {
+                    if (fileChooserCallback != null) {
+                        fileChooserCallback.onReceiveValue(null);
+                        fileChooserCallback = null;
+                    }
+                })
+                .create();
+
+        dialog.setOnShowListener(d -> {
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setOnClickListener(v -> {
+                dialog.dismiss();
+                getWindow().getDecorView().postDelayed(this::launchNativeCamera, 250L);
+            });
+        });
+        dialog.setOnDismissListener(d -> {
+            if (previewBitmap != null && !previewBitmap.isRecycled()) previewBitmap.recycle();
+        });
+
+        dialog.show();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setLayout(
+                    Math.min(getResources().getDisplayMetrics().widthPixels - 40, 1000),
+                    (int) (getResources().getDisplayMetrics().heightPixels * 0.78f));
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setTextColor(Color.rgb(0, 125, 125));
+        dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setTextColor(Color.rgb(75, 85, 100));
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == CAMERA_REQUEST) {
+            if (resultCode == RESULT_OK && pendingCameraFile != null
+                    && pendingCameraFile.exists() && pendingCameraFile.length() > 0) {
+                try {
+                    pendingWatermarkedFile = createWatermarkedPhoto(pendingCameraFile);
+                    if (pendingCameraFile != null) pendingCameraFile.delete();
+                    showPhotoPreview(pendingWatermarkedFile);
+                } catch (Exception e) {
+                    if (fileChooserCallback != null) {
+                        fileChooserCallback.onReceiveValue(null);
+                        fileChooserCallback = null;
+                    }
+                    Toast.makeText(this, "Gagal memproses foto: " + e.getMessage(),
+                            Toast.LENGTH_LONG).show();
+                }
+            } else {
+                if (fileChooserCallback != null) {
+                    fileChooserCallback.onReceiveValue(null);
+                    fileChooserCallback = null;
+                }
+                Toast.makeText(this, "Pengambilan foto dibatalkan.", Toast.LENGTH_SHORT).show();
+            }
+            return;
+        }
+
         if (requestCode == FILE_CHOOSER_REQUEST && fileChooserCallback != null) {
             Uri[] result = null;
             if (resultCode == RESULT_OK && data != null) {

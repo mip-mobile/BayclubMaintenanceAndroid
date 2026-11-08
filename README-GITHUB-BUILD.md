@@ -55,6 +55,15 @@ Semua update release mendatang harus memakai keystore yang sama. Simpan file `.j
 - Nama: Bayclub Mobile
 - URL awal: `https://bayclub.infinityfree.io/maintenance/`
 - Package ID release: `id.gclub.bayclubmaintenance`
-- Versi: `1.1.7` / versionCode `9`
+- Versi: `1.1.9` / versionCode `11`
 - Ikon: logo Bayclub yang diberikan pengguna
 - Fitur WebView: JavaScript, DOM storage, cookies, file chooser untuk upload bukti, izin lokasi saat situs meminta, navigasi Back, fullscreen immersive yang menyembunyikan status/notifikasi dan navigation bar serta mendeteksi kemunculan status bar untuk menyembunyikannya kembali lebih cepat serta memulihkannya lebih cepat setelah gestur Back, tombol/gestur Back untuk navigasi halaman sebelumnya, serta tekan Back dua kali di halaman awal untuk keluar.
+
+
+## Kamera bukti foto (v1.1.9)
+
+Input foto checklist akan membuka aplikasi kamera utama Android melalui ACTION_IMAGE_CAPTURE, bukan galeri. APK menggunakan FileProvider untuk menyimpan hasil jepretan sementara, membetulkan orientasi EXIF, menambahkan watermark permanen, lalu menampilkan preview sebelum foto diteruskan ke form website.
+
+Watermark berisi BAYCLUB MAINTENANCE, lokasi Bayclub, nama petugas yang dibaca dari header halaman (fallback: Petugas Bayclub), judul pekerjaan yang dibaca dari heading halaman, tanggal, dan jam WIB. Pada preview, petugas bisa memilih Ambil Ulang atau Gunakan Foto.
+
+Package ID release dipertahankan agar pembaruan tetap menggunakan identitas aplikasi lama. Versi sekarang: 1.1.9 / versionCode 11.
