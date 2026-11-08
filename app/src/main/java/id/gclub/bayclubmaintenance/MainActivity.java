@@ -204,32 +204,43 @@ public class MainActivity extends Activity {
                 if (fileChooserCallback != null) fileChooserCallback.onReceiveValue(null);
                 fileChooserCallback = callback;
 
-                // Photo evidence: open the native Android camera immediately.
-                // Do not wait for evaluateJavascript() before launching the camera:
-                // a WebView callback can be delayed or lost while a page is busy.
+                // Photo evidence: resolve the signed-in account name before opening camera.
                 if (isImageChooser(fileChooserParams)) {
                     Toast.makeText(MainActivity.this, "Membuka kamera Bayclub...", Toast.LENGTH_SHORT).show();
                     pendingPetugasName = "Petugas Bayclub";
-                    pendingJobName = "Checklist Maintenance";
-                    if (webView != null) {
+                    if (webView == null) {
+                        launchNativeCamera();
+                    } else {
                         final String script =
-                                "(function(){try{var t=(document.body&&document.body.innerText)||'';" +
-                                "var a=t.split(/\\r?\\n/).map(function(s){return s.trim();}).filter(Boolean);" +
-                                "var i=a.findIndex(function(s){return /^(Split|Shift\\s*\\d*)$/i.test(s);});" +
-                                "var n=i>=0&&a[i+1]?a[i+1]:'Petugas Bayclub';" +
-                                "return JSON.stringify({petugas:n});" +
-                                "}catch(e){return '{}';}})()";
+                                "(function(){try{" +
+                                "var bad=/^(\\d{4}-\\d{2}-\\d{2}|\\d{1,2}\\s+[A-Za-z]+\\s+\\d{4}|split|shift\\s*\\d*|progres pekerjaan|pekerjaan|foto bukti|bayclub maintenance|maintenance checklist|ambil \\/ tambah foto)$/i;" +
+                                "function norm(v){return String(v||'').replace(/[\\r\\n]+/g,' ').replace(/\\s+/g,' ').trim();}" +
+                                "function valid(v){v=norm(v);return v.length>=2&&v.length<=36&&!bad.test(v)&&!/^\\d+$/.test(v);}" +
+                                "var named=[];function walk(o,k,d){if(d>5||o==null)return;if(typeof o==='string'){if(/name|nama|username|petugas|employee|staff|display/i.test(k||'')&&valid(o))named.push(norm(o));return;}if(typeof o==='object'){Object.keys(o).forEach(function(x){walk(o[x],x,d+1);});}}" +
+                                "try{for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i),v=localStorage.getItem(k);try{walk(JSON.parse(v),k,0);}catch(e){if(/name|nama|username|petugas|employee|staff/i.test(k)&&valid(v))named.push(norm(v));}}}catch(e){}" +
+                                "try{for(var j=0;j<sessionStorage.length;j++){var sk=sessionStorage.key(j),sv=sessionStorage.getItem(sk);try{walk(JSON.parse(sv),sk,0);}catch(e){if(/name|nama|username|petugas|employee|staff/i.test(sk)&&valid(sv))named.push(norm(sv));}}}catch(e){}" +
+                                "var attrs='[data-user-name],[data-username],[data-petugas],[class*=\\"user-name\\"],[class*=\\"username\\"],[class*=\\"profile-name\\"],[class*=\\"user-chip\\"],[class*=\\"petugas\\"]';" +
+                                "document.querySelectorAll(attrs).forEach(function(el){var v=norm(el.getAttribute('data-user-name')||el.getAttribute('data-username')||el.getAttribute('data-petugas')||el.innerText||el.textContent);if(valid(v))named.unshift(v);});" +
+                                "if(named.length)return JSON.stringify({petugas:named[0]});" +
+                                "var chips=[];document.querySelectorAll('body *').forEach(function(el){if(el.children.length>2)return;var v=norm(el.innerText||el.textContent);if(!valid(v))return;var r=el.getBoundingClientRect();if(r.top<0||r.top>300||r.height<22||r.height>72||r.width<28||r.width>210)return;var s=getComputedStyle(el);var radius=parseFloat(s.borderTopLeftRadius)||0;var bg=s.backgroundColor;var bordered=s.borderTopWidth!=='0px'&&s.borderTopStyle!=='none';if(radius<8&&bg==='rgba(0, 0, 0, 0)'&&!bordered)return;chips.push({v:v,x:r.left,y:r.top,w:r.width});});" +
+                                "chips.sort(function(a,b){return Math.abs(a.y-b.y)>8?a.y-b.y:a.x-b.x;});" +
+                                "var unique=[];chips.forEach(function(q){if(!unique.some(function(z){return z.v===q.v&&Math.abs(z.x-q.x)<4&&Math.abs(z.y-q.y)<4;}))unique.push(q);});" +
+                                "var split=unique.findIndex(function(q){return /^(split|shift\\s*\\d*)$/i.test(q.v);});" +
+                                "if(split>=0){var rowY=unique[split].y;var next=unique.filter(function(q){return q.x>unique[split].x&&Math.abs(q.y-rowY)<10;});if(next.length)return JSON.stringify({petugas:next[0].v});}" +
+                                "var body=norm(document.body&&document.body.innerText);var m=body.match(/(?:Nama Akun|Nama Pengguna|Petugas|Pengguna)\\s*[:：]\\s*([A-Za-z][A-Za-z .'-]{1,34})/i);if(m&&valid(m[1]))return JSON.stringify({petugas:norm(m[1])});" +
+                                "return JSON.stringify({petugas:'Petugas Bayclub'});" +
+                                "}catch(e){return JSON.stringify({petugas:'Petugas Bayclub'});}})()";
                         webView.evaluateJavascript(script, value -> {
                             try {
-                                Object outer = new org.json.JSONTokener(value == null ? "\\\"\\\"" : value).nextValue();
+                                Object outer = new org.json.JSONTokener(value == null ? "\"\"" : value).nextValue();
                                 String payload = outer instanceof String ? (String) outer : "{}";
                                 org.json.JSONObject data = new org.json.JSONObject(payload);
-                                pendingPetugasName = data.optString("petugas", "Petugas Bayclub");
-                                pendingJobName = data.optString("pekerjaan", "Checklist Maintenance");
+                                String name = data.optString("petugas", "Petugas Bayclub").trim();
+                                if (!name.isEmpty()) pendingPetugasName = name;
                             } catch (Exception ignored) { }
+                            launchNativeCamera();
                         });
                     }
-                    launchNativeCamera();
                     return true;
                 }
 
