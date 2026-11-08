@@ -13,6 +13,7 @@ import android.webkit.CookieManager;
 import android.webkit.GeolocationPermissions;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.PermissionRequest;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -52,6 +53,7 @@ public class MainActivity extends Activity {
     private static final int FILE_CHOOSER_REQUEST = 4101;
     private static final int LOCATION_REQUEST = 4102;
     private static final int CAMERA_REQUEST = 4103;
+    private static final int CAMERA_PERMISSION_REQUEST = 4104;
     private static final int MAX_CAMERA_IMAGE_DIMENSION = 2200;
 
     private WebView webView;
@@ -61,6 +63,7 @@ public class MainActivity extends Activity {
     private String pendingPetugasName = "Petugas Bayclub";
     private String pendingJobName = "Checklist Maintenance";
     private GeolocationPermissions.Callback pendingGeoCallback;
+    private PermissionRequest pendingWebPermissionRequest;
     private String pendingGeoOrigin;
     private long lastBackPressAt = 0L;
     private OnBackInvokedCallback backInvokedCallback;
@@ -160,6 +163,41 @@ public class MainActivity extends Activity {
         });
 
         webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(PermissionRequest request) {
+                runOnUiThread(() -> {
+                    Uri origin = request.getOrigin();
+                    if (origin == null || !"https".equalsIgnoreCase(origin.getScheme())
+                            || !TRUSTED_HOST.equalsIgnoreCase(origin.getHost())) {
+                        request.deny();
+                        return;
+                    }
+                    boolean asksForCamera = false;
+                    for (String resource : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                            asksForCamera = true;
+                        }
+                    }
+                    if (!asksForCamera) {
+                        request.deny();
+                        return;
+                    }
+                    if (checkSelfPermissionCompat(Manifest.permission.CAMERA)) {
+                        request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                    } else {
+                        if (pendingWebPermissionRequest != null) pendingWebPermissionRequest.deny();
+                        pendingWebPermissionRequest = request;
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            requestPermissions(new String[]{Manifest.permission.CAMERA},
+                                    CAMERA_PERMISSION_REQUEST);
+                        } else {
+                            request.deny();
+                            pendingWebPermissionRequest = null;
+                        }
+                    }
+                });
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
                     FileChooserParams fileChooserParams) {
@@ -709,6 +747,20 @@ public class MainActivity extends Activity {
             pendingGeoCallback = null;
             pendingGeoOrigin = null;
         }
+
+        if (requestCode == CAMERA_PERMISSION_REQUEST && pendingWebPermissionRequest != null) {
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                pendingWebPermissionRequest.grant(
+                        new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+            } else {
+                pendingWebPermissionRequest.deny();
+                Toast.makeText(this, "Izin kamera diperlukan untuk mengambil foto bukti.",
+                        Toast.LENGTH_LONG).show();
+            }
+            pendingWebPermissionRequest = null;
+        }
     }
 
     @Override
@@ -800,6 +852,10 @@ public class MainActivity extends Activity {
         if (fileChooserCallback != null) {
             fileChooserCallback.onReceiveValue(null);
             fileChooserCallback = null;
+        }
+        if (pendingWebPermissionRequest != null) {
+            pendingWebPermissionRequest.deny();
+            pendingWebPermissionRequest = null;
         }
         if (webView != null) {
             webView.stopLoading();
