@@ -214,10 +214,10 @@ public class MainActivity extends Activity {
                     if (webView != null) {
                         final String script =
                                 "(function(){try{var t=(document.body&&document.body.innerText)||'';" +
-                                "var m=t.match(/(?:Split|Shift\\s*\\d+)\\s+([A-Z][A-Za-z.'-]*(?:\\s+[A-Z][A-Za-z.'-]*)*)/m);" +
-                                "if(!m)m=t.match(/([A-Z][A-Za-z.'-]*(?:\\s+[A-Z][A-Za-z.'-]*)*)\\s*[·•]\\s*(?:Split|Shift\\s*\\d+)/m);" +
-                                "var h=document.querySelector('h1,h2');" +
-                                "return JSON.stringify({petugas:m?m[1]:'Petugas Bayclub',pekerjaan:h?(h.innerText||'').trim():'Checklist Maintenance'});" +
+                                "var a=t.split(/\\r?\\n/).map(function(s){return s.trim();}).filter(Boolean);" +
+                                "var i=a.findIndex(function(s){return /^(Split|Shift\\s*\\d*)$/i.test(s);});" +
+                                "var n=i>=0&&a[i+1]?a[i+1]:'Petugas Bayclub';" +
+                                "return JSON.stringify({petugas:n});" +
                                 "}catch(e){return '{}';}})()";
                         webView.evaluateJavascript(script, value -> {
                             try {
@@ -561,7 +561,7 @@ public class MainActivity extends Activity {
             int width = bitmap.getWidth();
             int height = bitmap.getHeight();
             float left = Math.max(24f, width * 0.035f);
-            float bandHeight = Math.max(190f, height * 0.24f);
+            float bandHeight = Math.max(132f, height * 0.17f);
 
             Paint background = new Paint(Paint.ANTI_ALIAS_FLAG);
             background.setColor(Color.argb(184, 5, 20, 42));
@@ -584,21 +584,15 @@ public class MainActivity extends Activity {
             float detailSize = Math.max(18f, width * 0.021f);
             float availableWidth = width - (left * 2f);
 
-            text.setTextSize(titleSize);
-            float y = height - bandHeight + titleSize + 14f;
-            drawWatermarkLine(canvas, "BAYCLUB MAINTENANCE", left, y, availableWidth, text);
-
             text.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
             text.setTextSize(detailSize);
-            float lineGap = detailSize + 10f;
-            y += lineGap;
-            drawWatermarkLine(canvas, "Lokasi: Bayclub", left, y, availableWidth, text);
-            y += lineGap;
+            float lineGap = detailSize + 12f;
+            float y = height - bandHeight + detailSize + 20f;
             drawWatermarkLine(canvas, "Petugas: " + pendingPetugasName, left, y, availableWidth, text);
             y += lineGap;
-            drawWatermarkLine(canvas, "Pekerjaan: " + pendingJobName, left, y, availableWidth, text);
+            drawWatermarkLine(canvas, "Tanggal: " + date, left, y, availableWidth, text);
             y += lineGap;
-            drawWatermarkLine(canvas, "Tanggal: " + date + "  •  " + time, left, y, availableWidth, text);
+            drawWatermarkLine(canvas, "Jam: " + time, left, y, availableWidth, text);
 
             File parent = source.getParentFile();
             File output = File.createTempFile("bayclub-bukti-", ".jpg", parent);
