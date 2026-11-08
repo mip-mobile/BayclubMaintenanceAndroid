@@ -699,9 +699,14 @@ public class MainActivity extends Activity {
             if (resultCode == RESULT_OK && pendingCameraFile != null
                     && pendingCameraFile.exists() && pendingCameraFile.length() > 0) {
                 try {
-                    // Keep the native camera image untouched. The authenticated website
-                    // applies the only watermark after upload using the logged-in account.
-                    showPhotoPreview(pendingCameraFile);
+                    // Send the captured photo directly to the checklist without an intermediate preview.
+                    // The authenticated website applies the only watermark after upload.
+                    if (fileChooserCallback != null) {
+                        Uri finalUri = FileProvider.getUriForFile(
+                                MainActivity.this, getPackageName() + ".fileprovider", pendingCameraFile);
+                        fileChooserCallback.onReceiveValue(new Uri[]{finalUri});
+                        fileChooserCallback = null;
+                    }
                 } catch (Exception e) {
                     if (fileChooserCallback != null) {
                         fileChooserCallback.onReceiveValue(null);
