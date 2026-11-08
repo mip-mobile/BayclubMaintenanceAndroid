@@ -166,9 +166,32 @@ public class MainActivity extends Activity {
                 if (fileChooserCallback != null) fileChooserCallback.onReceiveValue(null);
                 fileChooserCallback = callback;
 
-                // Checklist photo evidence opens Android's native rear-camera app.
+                // Photo evidence: open the native Android camera immediately.
+                // Do not wait for evaluateJavascript() before launching the camera:
+                // a WebView callback can be delayed or lost while a page is busy.
                 if (isImageChooser(fileChooserParams)) {
-                    getPetugasNameAndOpenCamera();
+                    Toast.makeText(MainActivity.this, "Membuka kamera Bayclub...", Toast.LENGTH_SHORT).show();
+                    pendingPetugasName = "Petugas Bayclub";
+                    pendingJobName = "Checklist Maintenance";
+                    if (webView != null) {
+                        final String script =
+                                "(function(){try{var t=(document.body&&document.body.innerText)||'';" +
+                                "var m=t.match(/(?:Split|Shift\\s*\\d+)\\s+([A-Z][A-Za-z.'-]*(?:\\s+[A-Z][A-Za-z.'-]*)*)/m);" +
+                                "if(!m)m=t.match(/([A-Z][A-Za-z.'-]*(?:\\s+[A-Z][A-Za-z.'-]*)*)\\s*[·•]\\s*(?:Split|Shift\\s*\\d+)/m);" +
+                                "var h=document.querySelector('h1,h2');" +
+                                "return JSON.stringify({petugas:m?m[1]:'Petugas Bayclub',pekerjaan:h?(h.innerText||'').trim():'Checklist Maintenance'});" +
+                                "}catch(e){return '{}';}})()";
+                        webView.evaluateJavascript(script, value -> {
+                            try {
+                                Object outer = new org.json.JSONTokener(value == null ? "\\\"\\\"" : value).nextValue();
+                                String payload = outer instanceof String ? (String) outer : "{}";
+                                org.json.JSONObject data = new org.json.JSONObject(payload);
+                                pendingPetugasName = data.optString("petugas", "Petugas Bayclub");
+                                pendingJobName = data.optString("pekerjaan", "Checklist Maintenance");
+                            } catch (Exception ignored) { }
+                        });
+                    }
+                    launchNativeCamera();
                     return true;
                 }
 
